@@ -39,6 +39,46 @@ void merge(std::vector<Iterator>& iterators, std::vector<uint32_t>& colors, int6
     }
 }
 
+
+template <typename Iterator>
+void merge_best(std::vector<Iterator>& iterators, std::vector<uint32_t>& colors, int64_t min_score) {
+
+    if (iterators.empty()) return;
+    int32_t best_score = 0; //modification
+
+    uint32_t num_colors = iterators[0].item.num_colors();
+    std::vector<int32_t> scores(num_colors, 0);
+    for (auto& it : iterators) {
+        if (it.item.encoding_type() == encoding_t::complement_delta_gaps) {
+            it.item.reinit_for_complemented_set_iteration();
+            min_score -= it.score;
+            while (it.item.comp_value() < num_colors) {
+                scores[it.item.value()] += it.score;
+                it.item.next_comp();
+            }
+        } else {
+            uint32_t size = it.item.size();
+            for (uint32_t i = 0; i < size; ++i, it.item.next()) {
+                scores[it.item.value()] += it.score;
+            }
+        }
+    }
+    for (uint32_t color = 0; color < num_colors; color++) {
+        if ((scores[color] > best_score) & (scores[color] >= min_score)) {
+            colors.clear();
+            best_score = scores[color];
+            colors.push_back(scores[color]);
+            colors.push_back(color);
+        } else if ((scores[color] == best_score) & (scores[color] >= min_score)) {
+            colors.push_back(color);
+        }
+    }
+}
+
+
+
+
+
 template <typename Iterator>
 void merge_meta(std::vector<Iterator>& iterators, std::vector<uint32_t>& colors,
                 const uint64_t min_score) {
@@ -395,7 +435,7 @@ void index<ColorSets>::pseudoalign_threshold_union(std::string const& sequence,
     } else if constexpr (ColorSets::type == index_t::META_DIFF) {
         merge_metadiff(iterators, colors, min_score);
     } else if constexpr (ColorSets::type == index_t::HYBRID) {
-        merge(iterators, colors, min_score);
+        merge_best(iterators, colors, min_score);
     }
 
     assert(util::check_union(iterators, colors, min_score));

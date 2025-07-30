@@ -39,9 +39,12 @@ struct index {
     void pseudoalign_full_intersection(std::string const& sequence,  //
                                        std::vector<uint32_t>& results) const;
 
-    void pseudoalign_threshold_union(std::string const& sequence,     //
-                                     std::vector<uint32_t>& results,  //
-                                     const double threshold) const;
+    void pseudoalign_threshold_union(std::string const& sequence, std::vector<uint32_t>& results,
+                                     const double threshold, bool best_hits) const; //modification: pass best_hits to return best hits only
+
+    void pseudoalign_threshold_union(std::string const& sequence, std::vector<uint32_t>& results,
+                                     const double threshold) const; //modification: alternative for tsv output format
+
 
     std::string_view filename(uint64_t color) const {
         assert(color < num_colors());
