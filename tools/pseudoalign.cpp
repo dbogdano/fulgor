@@ -61,11 +61,14 @@ int pseudoalign(FulgorIndex const& index, fastx_parser::FastxParser<fastx_parser
             }
             num_reads += 1;
             colors.clear();
-            if (num_reads > 0 and num_reads % 1000000 == 0) {
-                iomut.lock();
-                std::cout << "mapped " << num_reads << " reads" << std::endl;
-                iomut.unlock();
-            }
+
+            //if (verbose) {
+            //    if (num_reads > 0 and num_reads % 1000000 == 0) {
+            //        iomut.lock();
+            //        std::cout << "mapped " << num_reads << " reads" << std::endl;
+            //        iomut.unlock();
+            //        }
+            //    }
             if (buff_size > buff_thresh) {
                 std::string outs = ss.str();
                 ss.str("");
@@ -170,8 +173,7 @@ int pseudoalign(int argc, char** argv) {
                "to avoid printing status messages to stdout.",
                "-o", true);
     parser.add("num_threads", "Number of threads (default is 1).", "-t", false);
-    parser.add("verbose", "Verbose output during query (default is false).", "--verbose", false,
-               true);
+    parser.add("verbose", "Verbose output during query (default is false).", "--verbose", false, true);
     parser.add("threshold",
                "Threshold for threshold_union algorithm. It must be a float in (0.0,1.0].", "-r",
                false);
