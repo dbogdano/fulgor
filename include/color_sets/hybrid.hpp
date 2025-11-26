@@ -62,14 +62,13 @@ struct hybrid {
                         if (first) {
                             bits::util::write_delta(m_bvb, val);
                             first = false;
-                            ++written;
                         } else {
                             assert(val >= prev_val + 1);
                             bits::util::write_delta(m_bvb, val - (prev_val + 1));
-                            ++written;
                         }
                         prev_val = val;
                         ++val;
+                        ++written;
                     }
                     assert(val == x);
                     val++;  // skip x
@@ -85,6 +84,7 @@ struct hybrid {
                 /* complementary_set_size = m_num_colors - size */
                 assert(m_num_colors - size <= m_num_colors);
                 assert(written == m_num_colors - size);
+                (void)written;  // silence "unused" warning
             }
             m_offsets.push_back(m_bvb.num_bits());
             m_num_total_integers += size;

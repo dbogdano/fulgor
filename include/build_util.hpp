@@ -145,15 +145,18 @@ void build_reference_sketches(index_type const& index,
     out.close();
 }
 
-template <typename Iterator>
+template <typename Index>
 void build_colors_sketches_sliced(
-    uint64_t num_colors, uint64_t num_color_sets, function<Iterator(uint64_t)> colors,
+    Index const& index,
     uint64_t p,                   // use 2^p bytes per HLL sketch
     uint64_t num_threads,         // num. threads for construction
     std::string output_filename,  // where the sketches will be serialized
     double left, double right)    //
 {
     assert(num_threads > 0);
+
+    const uint64_t num_colors = index.num_colors();
+    const uint64_t num_color_sets = index.num_color_sets();
 
     const double min_size = left * num_colors;
     const double max_size = right * num_colors;
@@ -162,27 +165,23 @@ void build_colors_sketches_sliced(
 
     if (num_color_sets < num_threads) { num_threads = num_color_sets; }
 
-    std::vector<Iterator> filtered_colors;
+    uint64_t load = 0;
     std::vector<uint64_t> filtered_colors_ids;
+    filtered_colors_ids.reserve(num_color_sets);
     for (uint64_t color_id = 0; color_id != num_color_sets; ++color_id) {
-        auto it = colors(color_id);
+        auto it = index.color_set(color_id);
         uint64_t size = it.size();
         if (size > min_size && size <= max_size) {
-            filtered_colors.push_back(it);
+            load += size;
             filtered_colors_ids.push_back(color_id);
         }
     }
-    const uint64_t partition_size = filtered_colors.size();
+    const uint64_t partition_size = filtered_colors_ids.size();
 
     struct slice {
         uint64_t begin, end;  // [..)
     };
     std::vector<slice> thread_slices;
-
-    uint64_t load = 0;
-    {
-        for (auto it : filtered_colors) { load += it.size(); }
-    }
 
     uint64_t load_per_thread = load / num_threads;
     {
@@ -191,7 +190,8 @@ void build_colors_sketches_sliced(
         uint64_t curr_load = 0;
 
         for (uint64_t i = 0; i != partition_size; ++i) {
-            auto it = filtered_colors[i];
+            auto color_id = filtered_colors_ids[i];
+            auto it = index.color_set(color_id);
             curr_load += it.size();
             if (curr_load >= load_per_thread || i == partition_size - 1) {
                 s.end = i + 1;
@@ -211,14 +211,15 @@ void build_colors_sketches_sliced(
         auto s = thread_slices[thread_id];
         sketches = std::vector<sketch::hll_t>(s.end - s.begin, sketch::hll_t(p));
 
-        for (uint64_t color_id = s.begin; color_id != s.end; ++color_id) {
-            auto it = filtered_colors[color_id];
+        for (uint64_t i = s.begin; i != s.end; ++i) {
+            auto color_id = filtered_colors_ids[i];
+            auto it = index.color_set(color_id);
             const uint64_t size = it.size();
             assert(size > 0);
-            for (uint64_t i = 0; i < size; ++i, ++it) {
+            for (uint64_t j = 0; j < size; ++j, ++it) {
                 uint64_t ref_id = *it;
                 assert(ref_id < num_colors);
-                sketches[color_id - s.begin].addh(ref_id);
+                sketches[i - s.begin].addh(ref_id);
             }
         }
     };

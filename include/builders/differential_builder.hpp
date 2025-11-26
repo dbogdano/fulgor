@@ -19,12 +19,8 @@ struct differential_permuter {
             constexpr uint64_t p = 10;
             for (uint64_t slice_id = 0; slice_id != num_slices; slice_id++) {
                 timer.start();
-                build_colors_sketches_sliced<hybrid::forward_iterator>(
-                    index.num_colors(), index.num_color_sets(),
-                    [&](uint64_t color_set_id) -> hybrid::forward_iterator {
-                        return index.color_set(color_set_id);
-                    },
-                    p, m_build_config.num_threads,
+                build_colors_sketches_sliced(
+                    index, p, m_build_config.num_threads,
                     m_build_config.tmp_dirname + "/sketches" + std::to_string(slice_id) + ".bin",
                     slices[slice_id], slices[slice_id + 1]);
                 timer.stop();

@@ -88,9 +88,9 @@ There is one executable called `fulgor` after the compilation, which can be used
 Run `./fulgor` to see a list of available tools.
 
 	== Fulgor: a colored de Bruijn graph index ========================================
-	
+
 	Usage: ./fulgor <tool> ...
-	
+
 	Tools:
 	  build              build an index
 	  pseudoalign        perform pseudoalignment to an index
@@ -98,7 +98,7 @@ Run `./fulgor` to see a list of available tools.
 	  verify             verify that index works correctly with current library version
 	  stats              print index statistics
 	  print-filenames    print all reference filenames
-	
+
 	Advanced tools:
 	  permute            permute the reference names of an index
 	  dump               write unitigs and color sets of an index in text format
@@ -230,6 +230,14 @@ This file has one line for each processed read, formatted as follows:
 where `[list]` is a TAB-separated list of integer triples, of length `[list-length]`.
 (`[TAB]` is the character `\t`.)
 If a triple is `(p n i)`, it means that the `n` kmers starting from that at position `p` in the query all have color set id `i`.
+
+Obtaining an iterator over the actual color set of id `i`, is as simple as
+
+```cpp
+auto it = index.color_set(i);
+```
+
+where the variable `it` is the iterator and `it.size()` is the size of the color set.
 
 #### Example
 
