@@ -31,6 +31,10 @@ int pseudoalign(FulgorIndex const& index, fastx_parser::FastxParser<fastx_parser
                 std::ofstream& out_file, std::mutex& iomut, std::mutex& ofile_mut,
                 const bool verbose)  //
 {
+    (void)hybrid_keep_best;  // Used only in threshold-union path
+    (void)emit_scores;       // Used only in threshold-union path
+    (void)use_quality;       // Used only in threshold-union path
+    (void)min_kmer_quality;  // Used only in threshold-union path
     std::vector<uint32_t> colors;  // result of pseudoalignment
     std::vector<uint32_t> scores;  // optional per-color scores
     std::stringstream ss;
@@ -58,7 +62,7 @@ int pseudoalign(FulgorIndex const& index, fastx_parser::FastxParser<fastx_parser
             if (!colors.empty()) {
                 num_mapped_reads += 1;
                 ss << record.name << '\t' << colors.size();
-                if (emit_scores) {
+                if (emit_scores && algo == pseudoalignment_algorithm::THRESHOLD_UNION) {
                     assert(colors.size() == scores.size());
                     for (uint64_t idx = 0; idx != colors.size(); ++idx) {
                         ss << "\t" << colors[idx] << ":" << scores[idx];
