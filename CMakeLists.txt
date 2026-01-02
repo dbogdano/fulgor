@@ -67,6 +67,13 @@ target_link_libraries(fulgor
   ${CMAKE_DL_LIBS}
 )
 
+# GCC < 9 requires explicit linkage of stdc++fs for <filesystem>
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9)
+    target_link_libraries(fulgor stdc++fs)
+  endif()
+endif()
+
 if (UNIX)
   if (APPLE)
     MESSAGE(STATUS "linking with rt should not be necessary on OSX; not adding rt")
