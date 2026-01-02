@@ -1,9 +1,30 @@
 #include <numeric>  // for std::accumulate
+#include <cmath>    // for pow()
 
 #include "include/index.hpp"
 #include "external/sshash/include/streaming_query.hpp"
 
 namespace fulgor {
+
+/* Compute Phred quality weight: weight = 1 - 10^(-Q/10)
+   Q=0 -> weight=0, Q=20 -> weight≈0.99, Q=30 -> weight≈0.999 */
+inline double quality_weight(uint8_t q) {
+    if (q == 0) return 0.0;
+    return 1.0 - std::pow(10.0, -static_cast<double>(q) / 10.0);
+}
+
+/* Compute average quality of a k-mer window
+   Returns average Phred score and optionally checks against min_quality */
+inline uint8_t avg_kmer_quality(std::string const& quality, uint64_t start, uint64_t k,
+                                uint8_t min_quality = 0) {
+    if (quality.empty() || start + k > quality.length()) return 0;
+    uint32_t sum = 0;
+    for (uint64_t i = 0; i < k; ++i) {
+        sum += (quality[start + i] - 33);  // Convert ASCII to Phred
+    }
+    uint8_t avg = static_cast<uint8_t>(sum / k);
+    return (avg >= min_quality) ? avg : 0;  // Return 0 if below threshold
+}
 
 template <typename T>
 struct scored {
@@ -378,10 +399,17 @@ void index<ColorSets>::pseudoalign_threshold_union(std::string const& sequence,
                                                    std::vector<uint32_t>& colors,
                                                    const double threshold,
                                                    std::vector<uint32_t>* scores,
-                                                   bool hybrid_keep_best) const {
+                                                   bool hybrid_keep_best,
+                                                   std::string const* quality,
+                                                   uint8_t min_kmer_quality) const {
     if (sequence.length() < m_k2u.k()) return;
     colors.clear();
     if (scores) scores->clear();
+
+    /* Validate quality string if provided */
+    if (quality && quality->length() != sequence.length()) {
+        throw std::runtime_error("Quality string length does not match sequence length");
+    }
 
     std::vector<scored_id> unitig_ids;
     uint64_t num_positive_kmers_in_sequence = 0;
@@ -393,13 +421,25 @@ void index<ColorSets>::pseudoalign_threshold_union(std::string const& sequence,
             char const* kmer = sequence.data() + i;
             auto answer = query.lookup_advanced(kmer);
             if (answer.kmer_id != sshash::constants::invalid_uint64) {  // kmer is positive
-                num_positive_kmers_in_sequence += 1;
+                /* Compute quality weight if quality provided */
+                uint32_t weight = 1;
+                if (quality) {
+                    uint8_t avg_q = avg_kmer_quality(*quality, i, m_k2u.k(), min_kmer_quality);
+                    if (avg_q == 0 && min_kmer_quality > 0) {
+                        continue;  // Skip low-quality k-mer
+                    }
+                    weight = static_cast<uint32_t>(
+                        std::round(quality_weight(avg_q) * 1000.0));  // Scale to integer
+                    if (weight == 0) continue;  // Skip if weight rounds to 0
+                }
+
+                num_positive_kmers_in_sequence += weight;
                 if (answer.contig_id != prev_unitig_id) {
-                    unitig_ids.push_back({answer.contig_id, 1});
+                    unitig_ids.push_back({answer.contig_id, weight});
                     prev_unitig_id = answer.contig_id;
                 } else {
                     assert(!unitig_ids.empty());
-                    unitig_ids.back().score += 1;
+                    unitig_ids.back().score += weight;
                 }
             }
         }

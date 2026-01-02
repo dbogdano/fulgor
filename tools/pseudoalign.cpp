@@ -27,8 +27,9 @@ template <typename FulgorIndex>
 int pseudoalign(FulgorIndex const& index, fastx_parser::FastxParser<fastx_parser::ReadSeq>& rparser,
                 std::atomic<uint64_t>& num_reads, std::atomic<uint64_t>& num_mapped_reads,
                 pseudoalignment_algorithm algo, const double threshold, const bool emit_scores,
-                const bool hybrid_keep_best, std::ofstream& out_file, std::mutex& iomut,
-                std::mutex& ofile_mut, const bool verbose)  //
+                const bool hybrid_keep_best, const bool use_quality, const uint8_t min_kmer_quality,
+                std::ofstream& out_file, std::mutex& iomut, std::mutex& ofile_mut,
+                const bool verbose)  //
 {
     std::vector<uint32_t> colors;  // result of pseudoalignment
     std::vector<uint32_t> scores;  // optional per-color scores
@@ -46,7 +47,9 @@ int pseudoalign(FulgorIndex const& index, fastx_parser::FastxParser<fastx_parser
                 case pseudoalignment_algorithm::THRESHOLD_UNION:
                     index.pseudoalign_threshold_union(record.seq, colors, threshold,
                                                       emit_scores ? &scores : nullptr,
-                                                      hybrid_keep_best);
+                                                      hybrid_keep_best,
+                                                      use_quality ? &record.qual : nullptr,
+                                                      min_kmer_quality);
                     break;
                 default:
                     break;
@@ -105,7 +108,8 @@ template <typename FulgorIndex>
 int pseudoalign(std::string const& index_filename, std::string const& query_filename,
                 std::string const& output_filename, uint64_t num_threads, double threshold,
                 pseudoalignment_algorithm ps_alg, const bool emit_scores,
-                const bool hybrid_keep_best, const bool verbose) {
+                const bool hybrid_keep_best, const bool use_quality, const uint8_t min_kmer_quality,
+                const bool verbose) {
     FulgorIndex index;
     if (verbose) essentials::logger("loading index from disk...");
     essentials::load(index, index_filename.c_str());
@@ -146,10 +150,12 @@ int pseudoalign(std::string const& index_filename, std::string const& query_file
 
     for (uint64_t i = 1; i != num_threads; ++i) {
         workers.push_back(std::thread([&index, &rparser, &num_reads, &num_mapped_reads, ps_alg,
-                                       threshold, emit_scores, hybrid_keep_best, &out_file, &iomut,
-                                       &ofile_mut, verbose]() {
+                                       threshold, emit_scores, hybrid_keep_best, use_quality,
+                                       min_kmer_quality, &out_file, &iomut, &ofile_mut,
+                                       verbose]() {
             pseudoalign(index, rparser, num_reads, num_mapped_reads, ps_alg, threshold,
-                        emit_scores, hybrid_keep_best, out_file, iomut, ofile_mut, verbose);
+                        emit_scores, hybrid_keep_best, use_quality, min_kmer_quality, out_file,
+                        iomut, ofile_mut, verbose);
         }));
     }
 
@@ -193,6 +199,12 @@ int pseudoalign(int argc, char** argv) {
     parser.add("hybrid_all_hits",
                "For HYBRID indexes, return all colors with scores >= threshold (default: best only)",
                "--hybrid-all-hits", false, true);
+    parser.add("use_quality", "Weight k-mers by Phred quality scores (threshold-union only).",
+               "--use-quality", false, true);
+    parser.add("min_kmer_quality",
+               "Minimum average k-mer quality (0-40, default: 0=no filtering). Only used with "
+               "--use-quality.",
+               "--min-kmer-quality", false);
     if (!parser.parse()) return 1;
 
     auto index_filename = parser.get<std::string>("index_filename");
@@ -217,6 +229,20 @@ int pseudoalign(int argc, char** argv) {
 
     bool emit_scores = parser.get<bool>("emit_scores");
     bool hybrid_keep_best = !parser.get<bool>("hybrid_all_hits");
+    bool use_quality = parser.get<bool>("use_quality");
+    uint8_t min_kmer_quality = 0;
+    if (parser.parsed("min_kmer_quality")) {
+        uint32_t val = parser.get<uint32_t>("min_kmer_quality");
+        if (val > 40) {
+            std::cerr << "min_kmer_quality must be in range [0, 40]" << std::endl;
+            return 1;
+        }
+        min_kmer_quality = static_cast<uint8_t>(val);
+    }
+    if (min_kmer_quality > 0 && !use_quality) {
+        std::cerr << "min_kmer_quality requires --use-quality flag" << std::endl;
+        return 1;
+    }
 
     auto ps_alg = pseudoalignment_algorithm::FULL_INTERSECTION;
     if (threshold != constants::invalid_threshold) {
@@ -231,20 +257,23 @@ int pseudoalign(int argc, char** argv) {
         return pseudoalign<meta_differential_index_type>(index_filename, query_filename,
                                                          output_filename, num_threads, threshold,
                                                          ps_alg, emit_scores, hybrid_keep_best,
-                                                         verbose);
+                                                         use_quality, min_kmer_quality, verbose);
     } else if (sshash::util::ends_with(index_filename,
                                        constants::meta_colored_fulgor_filename_extension)) {
         return pseudoalign<meta_index_type>(index_filename, query_filename, output_filename,
                                             num_threads, threshold, ps_alg, emit_scores,
-                                            hybrid_keep_best, verbose);
+                                            hybrid_keep_best, use_quality, min_kmer_quality,
+                                            verbose);
     } else if (sshash::util::ends_with(index_filename,
                                        constants::diff_colored_fulgor_filename_extension)) {
         return pseudoalign<differential_index_type>(index_filename, query_filename, output_filename,
                                                     num_threads, threshold, ps_alg, emit_scores,
-                                                    hybrid_keep_best, verbose);
+                                                    hybrid_keep_best, use_quality,
+                                                    min_kmer_quality, verbose);
     } else if (sshash::util::ends_with(index_filename, constants::fulgor_filename_extension)) {
         return pseudoalign<index_type>(index_filename, query_filename, output_filename, num_threads,
-                                       threshold, ps_alg, emit_scores, hybrid_keep_best, verbose);
+                                       threshold, ps_alg, emit_scores, hybrid_keep_best,
+                                       use_quality, min_kmer_quality, verbose);
     }
 
     std::cerr << "Wrong index filename supplied." << std::endl;

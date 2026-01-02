@@ -39,11 +39,13 @@ struct index {
     void pseudoalign_full_intersection(std::string const& sequence,            //
                                        std::vector<uint32_t>& results) const;  //
 
-    void pseudoalign_threshold_union(std::string const& sequence,              //
-                                     std::vector<uint32_t>& results,           //
-                                     const double threshold,                   //
-                                     std::vector<uint32_t>* scores = nullptr,  // optional per-color scores
-                                     bool hybrid_keep_best = true) const;      // HYBRID: choose best-only or all-above-threshold
+    void pseudoalign_threshold_union(std::string const& sequence,                    //
+                                     std::vector<uint32_t>& results,                 //
+                                     const double threshold,                         //
+                                     std::vector<uint32_t>* scores = nullptr,        // optional per-color scores
+                                     bool hybrid_keep_best = true,                   // HYBRID: choose best-only or all-above-threshold
+                                     std::string const* quality = nullptr,           // optional quality scores
+                                     uint8_t min_kmer_quality = 0) const;            // min avg quality per k-mer
 
     void kmer_conservation(std::string const& sequence,                                           //
                            std::vector<kmer_conservation_triple>& kmer_conservation_info) const;  //
