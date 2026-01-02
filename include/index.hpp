@@ -43,7 +43,7 @@ struct index {
                                      std::vector<uint32_t>& results,                 //
                                      const double threshold,                         //
                                      std::vector<uint32_t>* scores = nullptr,        // optional per-color scores
-                                     bool hybrid_keep_best = true,                   // HYBRID: choose best-only or all-above-threshold
+                                     [[maybe_unused]] bool hybrid_keep_best = true,  // HYBRID: choose best-only or all-above-threshold
                                      std::string const* quality = nullptr,           // optional quality scores
                                      uint8_t min_kmer_quality = 0) const;            // min avg quality per k-mer
 
