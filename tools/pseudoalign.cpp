@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <cassert>
 
 #include "src/ps_full_intersection.cpp"
 #include "src/ps_threshold_union.cpp"
@@ -25,10 +26,12 @@ std::string to_string(pseudoalignment_algorithm algo, double threshold) {
 template <typename FulgorIndex>
 int pseudoalign(FulgorIndex const& index, fastx_parser::FastxParser<fastx_parser::ReadSeq>& rparser,
                 std::atomic<uint64_t>& num_reads, std::atomic<uint64_t>& num_mapped_reads,
-                pseudoalignment_algorithm algo, const double threshold, std::ofstream& out_file,
-                std::mutex& iomut, std::mutex& ofile_mut, const bool verbose)  //
+                pseudoalignment_algorithm algo, const double threshold, const bool emit_scores,
+                std::ofstream& out_file, std::mutex& iomut, std::mutex& ofile_mut,
+                const bool verbose)  //
 {
     std::vector<uint32_t> colors;  // result of pseudoalignment
+    std::vector<uint32_t> scores;  // optional per-color scores
     std::stringstream ss;
     uint64_t buff_size = 0;
     constexpr uint64_t buff_thresh = 50;
@@ -41,7 +44,8 @@ int pseudoalign(FulgorIndex const& index, fastx_parser::FastxParser<fastx_parser
                     index.pseudoalign_full_intersection(record.seq, colors);
                     break;
                 case pseudoalignment_algorithm::THRESHOLD_UNION:
-                    index.pseudoalign_threshold_union(record.seq, colors, threshold);
+                    index.pseudoalign_threshold_union(record.seq, colors, threshold,
+                                                      emit_scores ? &scores : nullptr);
                     break;
                 default:
                     break;
@@ -50,13 +54,21 @@ int pseudoalign(FulgorIndex const& index, fastx_parser::FastxParser<fastx_parser
             if (!colors.empty()) {
                 num_mapped_reads += 1;
                 ss << record.name << '\t' << colors.size();
-                for (auto c : colors) { ss << "\t" << c; }
+                if (emit_scores) {
+                    assert(colors.size() == scores.size());
+                    for (uint64_t idx = 0; idx != colors.size(); ++idx) {
+                        ss << "\t" << colors[idx] << ":" << scores[idx];
+                    }
+                } else {
+                    for (auto c : colors) { ss << "\t" << c; }
+                }
                 ss << '\n';
             } else {
                 ss << record.name << "\t0\n";
             }
             num_reads += 1;
             colors.clear();
+            scores.clear();
 
             if (verbose and num_reads > 0 and num_reads % 1000000 == 0) {
                 iomut.lock();
@@ -91,7 +103,7 @@ int pseudoalign(FulgorIndex const& index, fastx_parser::FastxParser<fastx_parser
 template <typename FulgorIndex>
 int pseudoalign(std::string const& index_filename, std::string const& query_filename,
                 std::string const& output_filename, uint64_t num_threads, double threshold,
-                pseudoalignment_algorithm ps_alg, const bool verbose) {
+                pseudoalignment_algorithm ps_alg, const bool emit_scores, const bool verbose) {
     FulgorIndex index;
     if (verbose) essentials::logger("loading index from disk...");
     essentials::load(index, index_filename.c_str());
@@ -132,9 +144,10 @@ int pseudoalign(std::string const& index_filename, std::string const& query_file
 
     for (uint64_t i = 1; i != num_threads; ++i) {
         workers.push_back(std::thread([&index, &rparser, &num_reads, &num_mapped_reads, ps_alg,
-                                       threshold, &out_file, &iomut, &ofile_mut, verbose]() {
-            pseudoalign(index, rparser, num_reads, num_mapped_reads, ps_alg, threshold, out_file,
-                        iomut, ofile_mut, verbose);
+                                       threshold, emit_scores, &out_file, &iomut, &ofile_mut,
+                                       verbose]() {
+            pseudoalign(index, rparser, num_reads, num_mapped_reads, ps_alg, threshold,
+                        emit_scores, out_file, iomut, ofile_mut, verbose);
         }));
     }
 
@@ -173,6 +186,8 @@ int pseudoalign(int argc, char** argv) {
     parser.add("threshold",
                "Threshold for threshold_union algorithm. It must be a float in (0.0,1.0].", "-r",
                false);
+    parser.add("emit_scores", "Emit color:score pairs for threshold-union output.",
+               "--emit-scores", false, true);
     if (!parser.parse()) return 1;
 
     auto index_filename = parser.get<std::string>("index_filename");
@@ -195,6 +210,8 @@ int pseudoalign(int argc, char** argv) {
         return 1;
     }
 
+    bool emit_scores = parser.get<bool>("emit_scores");
+
     auto ps_alg = pseudoalignment_algorithm::FULL_INTERSECTION;
     if (threshold != constants::invalid_threshold) {
         ps_alg = pseudoalignment_algorithm::THRESHOLD_UNION;
@@ -207,18 +224,19 @@ int pseudoalign(int argc, char** argv) {
                                 constants::meta_diff_colored_fulgor_filename_extension)) {
         return pseudoalign<meta_differential_index_type>(index_filename, query_filename,
                                                          output_filename, num_threads, threshold,
-                                                         ps_alg, verbose);
+                                                         ps_alg, emit_scores, verbose);
     } else if (sshash::util::ends_with(index_filename,
                                        constants::meta_colored_fulgor_filename_extension)) {
         return pseudoalign<meta_index_type>(index_filename, query_filename, output_filename,
-                                            num_threads, threshold, ps_alg, verbose);
+                                            num_threads, threshold, ps_alg, emit_scores, verbose);
     } else if (sshash::util::ends_with(index_filename,
                                        constants::diff_colored_fulgor_filename_extension)) {
         return pseudoalign<differential_index_type>(index_filename, query_filename, output_filename,
-                                                    num_threads, threshold, ps_alg, verbose);
+                                                    num_threads, threshold, ps_alg, emit_scores,
+                                                    verbose);
     } else if (sshash::util::ends_with(index_filename, constants::fulgor_filename_extension)) {
         return pseudoalign<index_type>(index_filename, query_filename, output_filename, num_threads,
-                                       threshold, ps_alg, verbose);
+                                       threshold, ps_alg, emit_scores, verbose);
     }
 
     std::cerr << "Wrong index filename supplied." << std::endl;

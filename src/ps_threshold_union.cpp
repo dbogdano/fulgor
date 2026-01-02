@@ -14,7 +14,8 @@ struct scored {
 typedef scored<uint64_t> scored_id;
 
 template <typename Iterator>
-void merge(std::vector<Iterator>& iterators, std::vector<uint32_t>& colors, int64_t min_score) {
+void merge(std::vector<Iterator>& iterators, std::vector<uint32_t>& colors,
+           std::vector<uint32_t>* scores_out, int64_t min_score) {
     if (iterators.empty()) return;
 
     uint32_t num_colors = iterators[0].item.num_colors();
@@ -35,16 +36,20 @@ void merge(std::vector<Iterator>& iterators, std::vector<uint32_t>& colors, int6
         }
     }
     for (uint32_t color = 0; color < num_colors; color++) {
-        if (scores[color] >= min_score) colors.push_back(color);
+        if (scores[color] >= min_score) {
+            colors.push_back(color);
+            if (scores_out) scores_out->push_back(scores[color]);
+        }
     }
 }
 
 
 template <typename Iterator>
-void merge_best(std::vector<Iterator>& iterators, std::vector<uint32_t>& colors, int64_t min_score) {
+void merge_best(std::vector<Iterator>& iterators, std::vector<uint32_t>& colors,
+                std::vector<uint32_t>* scores_out, int64_t min_score) {
 
     if (iterators.empty()) return;
-    int32_t best_score = 0; //modification
+    int32_t best_score = 0;
 
     uint32_t num_colors = iterators[0].item.num_colors();
     std::vector<int32_t> scores(num_colors, 0);
@@ -66,11 +71,13 @@ void merge_best(std::vector<Iterator>& iterators, std::vector<uint32_t>& colors,
     for (uint32_t color = 0; color < num_colors; color++) {
         if ((scores[color] > best_score) & (scores[color] >= min_score)) {
             colors.clear();
+            if (scores_out) scores_out->clear();
             best_score = scores[color];
-            colors.push_back(scores[color]);
             colors.push_back(color);
+            if (scores_out) scores_out->push_back(scores[color]);
         } else if ((scores[color] == best_score) & (scores[color] >= min_score)) {
             colors.push_back(color);
+            if (scores_out) scores_out->push_back(scores[color]);
         }
     }
 }
@@ -81,7 +88,7 @@ void merge_best(std::vector<Iterator>& iterators, std::vector<uint32_t>& colors,
 
 template <typename Iterator>
 void merge_meta(std::vector<Iterator>& iterators, std::vector<uint32_t>& colors,
-                const uint64_t min_score) {
+                std::vector<uint32_t>* scores_out, const uint64_t min_score) {
     if (iterators.empty()) return;
 
     const uint32_t num_partitions = iterators[0].item.num_partitions();
@@ -155,13 +162,16 @@ void merge_meta(std::vector<Iterator>& iterators, std::vector<uint32_t>& colors,
     }
 
     for (uint32_t color = 0; color < num_colors; color++) {
-        if (scores[color] >= min_score) colors.push_back(color);
+        if (scores[color] >= min_score) {
+            colors.push_back(color);
+            if (scores_out) scores_out->push_back(scores[color]);
+        }
     }
 }
 
 template <typename Iterator>
 void merge_diff(std::vector<Iterator>& iterators, std::vector<uint32_t>& colors,
-                const uint64_t min_score) {
+                std::vector<uint32_t>* scores_out, const uint64_t min_score) {
     if (iterators.empty()) return;
     const uint32_t num_colors = iterators[0].item.num_colors();
     const uint32_t num_iterators = iterators.size();
@@ -220,13 +230,16 @@ void merge_diff(std::vector<Iterator>& iterators, std::vector<uint32_t>& colors,
     }
 
     for (uint32_t color = 0; color < num_colors; color++) {
-        if (scores[color] >= min_score) colors.push_back(color);
+        if (scores[color] >= min_score) {
+            colors.push_back(color);
+            if (scores_out) scores_out->push_back(scores[color]);
+        }
     }
 }
 
 template <typename Iterator>
 void merge_metadiff(std::vector<Iterator>& iterators, std::vector<uint32_t>& colors,
-                    const uint64_t min_score) {
+                    std::vector<uint32_t>* scores_out, const uint64_t min_score) {
     if (iterators.empty()) return;
 
     const uint32_t num_partitions = iterators[0].item.num_partitions();
@@ -353,16 +366,21 @@ void merge_metadiff(std::vector<Iterator>& iterators, std::vector<uint32_t>& col
         }
     }
     for (uint32_t color = 0; color < num_colors; color++) {
-        if (scores[color] >= min_score) colors.push_back(color);
+        if (scores[color] >= min_score) {
+            colors.push_back(color);
+            if (scores_out) scores_out->push_back(scores[color]);
+        }
     }
 }
 
 template <typename ColorSets>
 void index<ColorSets>::pseudoalign_threshold_union(std::string const& sequence,
                                                    std::vector<uint32_t>& colors,
-                                                   const double threshold) const {
+                                                   const double threshold,
+                                                   std::vector<uint32_t>* scores) const {
     if (sequence.length() < m_k2u.k()) return;
     colors.clear();
+    if (scores) scores->clear();
 
     std::vector<scored_id> unitig_ids;
     uint64_t num_positive_kmers_in_sequence = 0;
@@ -429,13 +447,13 @@ void index<ColorSets>::pseudoalign_threshold_union(std::string const& sequence,
     const uint64_t min_score = static_cast<double>(num_positive_kmers_in_sequence) * threshold;
 
     if constexpr (ColorSets::type == index_t::META) {
-        merge_meta(iterators, colors, min_score);
+        merge_meta(iterators, colors, scores, min_score);
     } else if constexpr (ColorSets::type == index_t::DIFF) {
-        merge_diff(iterators, colors, min_score);
+        merge_diff(iterators, colors, scores, min_score);
     } else if constexpr (ColorSets::type == index_t::META_DIFF) {
-        merge_metadiff(iterators, colors, min_score);
+        merge_metadiff(iterators, colors, scores, min_score);
     } else if constexpr (ColorSets::type == index_t::HYBRID) {
-        merge_best(iterators, colors, min_score);
+        merge_best(iterators, colors, scores, min_score);
     }
 
     assert(util::check_union(iterators, colors, min_score));
