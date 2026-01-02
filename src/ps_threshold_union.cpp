@@ -377,7 +377,8 @@ template <typename ColorSets>
 void index<ColorSets>::pseudoalign_threshold_union(std::string const& sequence,
                                                    std::vector<uint32_t>& colors,
                                                    const double threshold,
-                                                   std::vector<uint32_t>* scores) const {
+                                                   std::vector<uint32_t>* scores,
+                                                   bool hybrid_keep_best) const {
     if (sequence.length() < m_k2u.k()) return;
     colors.clear();
     if (scores) scores->clear();
@@ -453,7 +454,11 @@ void index<ColorSets>::pseudoalign_threshold_union(std::string const& sequence,
     } else if constexpr (ColorSets::type == index_t::META_DIFF) {
         merge_metadiff(iterators, colors, scores, min_score);
     } else if constexpr (ColorSets::type == index_t::HYBRID) {
-        merge_best(iterators, colors, scores, min_score);
+        if (hybrid_keep_best) {
+            merge_best(iterators, colors, scores, min_score);
+        } else {
+            merge(iterators, colors, scores, min_score);
+        }
     }
 
     assert(util::check_union(iterators, colors, min_score));

@@ -27,8 +27,8 @@ template <typename FulgorIndex>
 int pseudoalign(FulgorIndex const& index, fastx_parser::FastxParser<fastx_parser::ReadSeq>& rparser,
                 std::atomic<uint64_t>& num_reads, std::atomic<uint64_t>& num_mapped_reads,
                 pseudoalignment_algorithm algo, const double threshold, const bool emit_scores,
-                std::ofstream& out_file, std::mutex& iomut, std::mutex& ofile_mut,
-                const bool verbose)  //
+                const bool hybrid_keep_best, std::ofstream& out_file, std::mutex& iomut,
+                std::mutex& ofile_mut, const bool verbose)  //
 {
     std::vector<uint32_t> colors;  // result of pseudoalignment
     std::vector<uint32_t> scores;  // optional per-color scores
@@ -45,7 +45,8 @@ int pseudoalign(FulgorIndex const& index, fastx_parser::FastxParser<fastx_parser
                     break;
                 case pseudoalignment_algorithm::THRESHOLD_UNION:
                     index.pseudoalign_threshold_union(record.seq, colors, threshold,
-                                                      emit_scores ? &scores : nullptr);
+                                                      emit_scores ? &scores : nullptr,
+                                                      hybrid_keep_best);
                     break;
                 default:
                     break;
@@ -103,7 +104,8 @@ int pseudoalign(FulgorIndex const& index, fastx_parser::FastxParser<fastx_parser
 template <typename FulgorIndex>
 int pseudoalign(std::string const& index_filename, std::string const& query_filename,
                 std::string const& output_filename, uint64_t num_threads, double threshold,
-                pseudoalignment_algorithm ps_alg, const bool emit_scores, const bool verbose) {
+                pseudoalignment_algorithm ps_alg, const bool emit_scores,
+                const bool hybrid_keep_best, const bool verbose) {
     FulgorIndex index;
     if (verbose) essentials::logger("loading index from disk...");
     essentials::load(index, index_filename.c_str());
@@ -144,10 +146,10 @@ int pseudoalign(std::string const& index_filename, std::string const& query_file
 
     for (uint64_t i = 1; i != num_threads; ++i) {
         workers.push_back(std::thread([&index, &rparser, &num_reads, &num_mapped_reads, ps_alg,
-                                       threshold, emit_scores, &out_file, &iomut, &ofile_mut,
-                                       verbose]() {
+                                       threshold, emit_scores, hybrid_keep_best, &out_file, &iomut,
+                                       &ofile_mut, verbose]() {
             pseudoalign(index, rparser, num_reads, num_mapped_reads, ps_alg, threshold,
-                        emit_scores, out_file, iomut, ofile_mut, verbose);
+                        emit_scores, hybrid_keep_best, out_file, iomut, ofile_mut, verbose);
         }));
     }
 
@@ -188,6 +190,9 @@ int pseudoalign(int argc, char** argv) {
                false);
     parser.add("emit_scores", "Emit color:score pairs for threshold-union output.",
                "--emit-scores", false, true);
+    parser.add("hybrid_all_hits",
+               "For HYBRID indexes, return all colors with scores >= threshold (default: best only)",
+               "--hybrid-all-hits", false, true);
     if (!parser.parse()) return 1;
 
     auto index_filename = parser.get<std::string>("index_filename");
@@ -211,6 +216,7 @@ int pseudoalign(int argc, char** argv) {
     }
 
     bool emit_scores = parser.get<bool>("emit_scores");
+    bool hybrid_keep_best = !parser.get<bool>("hybrid_all_hits");
 
     auto ps_alg = pseudoalignment_algorithm::FULL_INTERSECTION;
     if (threshold != constants::invalid_threshold) {
@@ -224,19 +230,21 @@ int pseudoalign(int argc, char** argv) {
                                 constants::meta_diff_colored_fulgor_filename_extension)) {
         return pseudoalign<meta_differential_index_type>(index_filename, query_filename,
                                                          output_filename, num_threads, threshold,
-                                                         ps_alg, emit_scores, verbose);
+                                                         ps_alg, emit_scores, hybrid_keep_best,
+                                                         verbose);
     } else if (sshash::util::ends_with(index_filename,
                                        constants::meta_colored_fulgor_filename_extension)) {
         return pseudoalign<meta_index_type>(index_filename, query_filename, output_filename,
-                                            num_threads, threshold, ps_alg, emit_scores, verbose);
+                                            num_threads, threshold, ps_alg, emit_scores,
+                                            hybrid_keep_best, verbose);
     } else if (sshash::util::ends_with(index_filename,
                                        constants::diff_colored_fulgor_filename_extension)) {
         return pseudoalign<differential_index_type>(index_filename, query_filename, output_filename,
                                                     num_threads, threshold, ps_alg, emit_scores,
-                                                    verbose);
+                                                    hybrid_keep_best, verbose);
     } else if (sshash::util::ends_with(index_filename, constants::fulgor_filename_extension)) {
         return pseudoalign<index_type>(index_filename, query_filename, output_filename, num_threads,
-                                       threshold, ps_alg, emit_scores, verbose);
+                                       threshold, ps_alg, emit_scores, hybrid_keep_best, verbose);
     }
 
     std::cerr << "Wrong index filename supplied." << std::endl;
