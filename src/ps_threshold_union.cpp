@@ -429,7 +429,7 @@ void index<ColorSets>::pseudoalign_threshold_union(std::string const& sequence,
                         continue;  // Skip low-quality k-mer
                     }
                     weight = static_cast<uint32_t>(
-                        std::round(quality_weight(avg_q) * 1000.0));  // Scale to integer
+                        std::round(quality_weight(avg_q)));  // 0-1 mapped to 0-1
                     if (weight == 0) continue;  // Skip if weight rounds to 0
                 }
 
