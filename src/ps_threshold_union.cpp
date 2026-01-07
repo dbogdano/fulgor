@@ -69,13 +69,13 @@ void merge_best(std::vector<Iterator>& iterators, std::vector<uint32_t>& colors,
         }
     }
     for (uint32_t color = 0; color < num_colors; color++) {
-        if ((scores[color] > best_score) & (scores[color] >= min_score)) {
+        if ((scores[color] > best_score) && (scores[color] >= min_score)) {
             colors.clear();
             if (scores_out) scores_out->clear();
             best_score = scores[color];
             colors.push_back(color);
             if (scores_out) scores_out->push_back(scores[color]);
-        } else if ((scores[color] == best_score) & (scores[color] >= min_score)) {
+        } else if ((scores[color] == best_score) && (scores[color] >= min_score)) {
             colors.push_back(color);
             if (scores_out) scores_out->push_back(scores[color]);
         }
@@ -339,7 +339,20 @@ void merge_metadiff(std::vector<Iterator>& iterators, std::vector<uint32_t>& col
 
             diff_it.full_rewind();
 
-            uint32_t val = diff_it.differential_val();
+            uint32_t val = diff_it.di            for (uint64_t i = 0; i != num_kmers; ++i) {
+                // Check if this k-mer overlaps with masked regions
+                if (mask) {
+                    bool skip_kmer = false;
+                    for (uint64_t j = 0; j < m_k2u.k(); ++j) {
+                        if ((*mask)[i + j]) {
+                            skip_kmer = true;
+                            break;
+                        }
+                    }
+                    if (skip_kmer) continue;
+                }
+                // ... rest of k-mer lookup
+            }fferential_val();
             while (val != num_partition_colors) {
                 partition_scores[val] += meta_score;
                 diff_it.next_differential_val();
@@ -432,15 +445,17 @@ void index<ColorSets>::pseudoalign_threshold_union(std::string const& sequence,
     std::sort(color_set_ids.begin(), color_set_ids.end(),
               [](auto const& x, auto const& y) { return x.item < y.item; });
     uint32_t prev_color_set_id = -1;
+    uint64_t iterator_idx = -1;
     for (uint64_t i = 0; i != color_set_ids.size(); ++i) {
         uint64_t color_set_id = color_set_ids[i].item;
         if (color_set_id != prev_color_set_id) {
             auto fwd_it = m_color_sets.color_set(color_set_id);
             iterators.push_back({fwd_it, color_set_ids[i].score});
+            iterator_idx = iterators.size() - 1;
             prev_color_set_id = color_set_id;
         } else {
-            assert(!iterators.empty());
-            iterators.back().score += color_set_ids[i].score;
+            assert(!iterators.empty() && iterator_idx < iterators.size());
+            iterators[iterator_idx].score += color_set_ids[i].score;
         }
     }
 
