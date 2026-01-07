@@ -339,20 +339,7 @@ void merge_metadiff(std::vector<Iterator>& iterators, std::vector<uint32_t>& col
 
             diff_it.full_rewind();
 
-            uint32_t val = diff_it.di            for (uint64_t i = 0; i != num_kmers; ++i) {
-                // Check if this k-mer overlaps with masked regions
-                if (mask) {
-                    bool skip_kmer = false;
-                    for (uint64_t j = 0; j < m_k2u.k(); ++j) {
-                        if ((*mask)[i + j]) {
-                            skip_kmer = true;
-                            break;
-                        }
-                    }
-                    if (skip_kmer) continue;
-                }
-                // ... rest of k-mer lookup
-            }fferential_val();
+            uint32_t val = diff_it.differential_val();
             while (val != num_partition_colors) {
                 partition_scores[val] += meta_score;
                 diff_it.next_differential_val();
