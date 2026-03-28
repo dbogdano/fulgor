@@ -75,8 +75,11 @@ int pseudoalign(FulgorIndex const& index, fastx_parser::FastxParser<fastx_parser
 
     auto rg = rparser.getReadGroup();
     while (rparser.refill(rg)) {
-        for (auto const& record : rg) {
-            read_idx = num_reads++;
+        auto const chunk_offset = rg.chunk_frag_offset().frag_idx;
+        for (uint64_t j = 0; j != rg.size(); ++j) {
+            auto const& record = rg[j];
+            read_idx = chunk_offset + j;
+            num_reads += 1;
             
             switch (algo) {
                 case pseudoalignment_algorithm::FULL_INTERSECTION:
