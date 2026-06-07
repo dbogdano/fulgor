@@ -4,3 +4,5 @@ debug_build
 test_data
 .idea
 *.swp
+build_ordered_multithreading
+build_bdw
